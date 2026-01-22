@@ -63,6 +63,12 @@ import {
   isGithubActionsAvailable,
 } from '@backstage-community/plugin-github-actions';
 
+import {
+  EntityArgoCDOverviewCard,
+  EntityArgoCDHistoryCard,
+  isArgocdAvailable,
+} from '@roadiehq/backstage-plugin-argo-cd';
+
 const techdocsContent = (
   <EntityTechdocsContent>
     <TechDocsAddons>
@@ -134,6 +140,14 @@ const overviewContent = (
       <EntityCatalogGraphCard variant="gridItem" height={400} />
     </Grid>
 
+    <EntitySwitch>
+      <EntitySwitch.Case if={isArgocdAvailable}>
+        <Grid item md={6} xs={12}>
+          <EntityArgoCDOverviewCard />
+        </Grid>
+      </EntitySwitch.Case>
+    </EntitySwitch>
+
     <Grid item md={4} xs={12}>
       <EntityLinksCard />
     </Grid>
@@ -159,6 +173,14 @@ const serviceEntityPage = (
       if={isKubernetesAvailable}
     >
       <EntityKubernetesContent />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route
+      path="/argocd"
+      title="ArgoCD"
+      if={isArgocdAvailable}
+    >
+      <EntityArgoCDHistoryCard />
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/api" title="API">
@@ -205,6 +227,14 @@ const websiteEntityPage = (
       if={isKubernetesAvailable}
     >
       <EntityKubernetesContent />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route
+      path="/argocd"
+      title="ArgoCD"
+      if={isArgocdAvailable}
+    >
+      <EntityArgoCDHistoryCard />
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/dependencies" title="Dependencies">

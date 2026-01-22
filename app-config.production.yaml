@@ -67,3 +67,12 @@ catalog:
       target: ./examples/org.yaml
       rules:
         - allow: [User, Group]
+
+# ArgoCD configuration for production
+argocd:
+  appLocatorMethods:
+    - type: 'config'
+      instances:
+        - name: dev
+          url: ${ARGOCD_URL}
+          token: ${ARGOCD_AUTH_TOKEN}
