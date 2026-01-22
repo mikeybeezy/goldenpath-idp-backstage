@@ -31,7 +31,7 @@ services:
       POSTGRES_PORT: "5432"
       POSTGRES_USER: backstage
       POSTGRES_PASSWORD: backstage
-      # Optional: Add GitHub token for integrations
+      # Optional: Set GITHUB_TOKEN env var for private repos and GitHub Actions
       # GITHUB_TOKEN: ${GITHUB_TOKEN}
     ports:
       - "7007:7007"
