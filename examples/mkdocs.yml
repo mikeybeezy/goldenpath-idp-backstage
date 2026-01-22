@@ -1,0 +1,9 @@
+site_name: Example Website Documentation
+site_description: Documentation for the example website component
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+
+plugins:
+  - techdocs-core
