@@ -4,3 +4,6 @@ import App from './App';
 import '@backstage/ui/css/styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
+backend.add(import('@backstage/plugin-auth-backend-module-github-provider'));
+
+
