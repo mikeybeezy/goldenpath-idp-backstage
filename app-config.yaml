@@ -102,6 +102,20 @@ catalog:
 kubernetes:
   # see https://backstage.io/docs/features/kubernetes/configuration for kubernetes configuration options
 
+# ArgoCD configuration
+# See https://github.com/RoadieHQ/roadie-backstage-plugins/tree/main/plugins/backend/backstage-plugin-argo-cd-backend
+argocd:
+  # Set ARGOCD_AUTH_TOKEN env var for token-based auth (recommended)
+  # Or use username/password:
+  # username: ${ARGOCD_USERNAME}
+  # password: ${ARGOCD_PASSWORD}
+  appLocatorMethods:
+    - type: 'config'
+      instances:
+        - name: dev
+          url: ${ARGOCD_URL}
+          # token: ${ARGOCD_AUTH_TOKEN}  # Uncomment when token is available
+
 # see https://backstage.io/docs/permissions/getting-started for more on the permission framework
 permission:
   # setting this to `false` will disable permissions
