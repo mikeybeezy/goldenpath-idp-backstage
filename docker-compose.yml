@@ -31,6 +31,9 @@ services:
       POSTGRES_PORT: "5432"
       POSTGRES_USER: backstage
       POSTGRES_PASSWORD: backstage
+      # ArgoCD configuration (set real values for cluster deployment)
+      ARGOCD_URL: http://argocd-server.argocd.svc.cluster.local
+      ARGOCD_AUTH_TOKEN: placeholder-token-for-local-dev
       # Optional: Set GITHUB_TOKEN env var for private repos and GitHub Actions
       # GITHUB_TOKEN: ${GITHUB_TOKEN}
     ports:
