@@ -1,0 +1,13 @@
+name: Lint
+on: [push, pull_request]
+jobs:
+  check-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for tracked build artifacts
+        run: |
+          if git ls-files | grep -E 'node_modules/|dist-types/|\.pnp\.(cjs|loader\.mjs)|\.yarn/unplugged/'; then
+            echo "ERROR: Build artifacts should not be tracked"
+            exit 1
+          fi
