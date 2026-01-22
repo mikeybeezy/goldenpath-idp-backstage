@@ -1,0 +1,12 @@
+node_modules/
+dist-types/
+dist/
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+.yarn/install-state.gz
+.pnp.*
+.DS_Store
+*.local.yaml

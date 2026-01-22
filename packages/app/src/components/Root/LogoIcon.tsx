@@ -1,0 +1,44 @@
+import { makeStyles } from '@material-ui/core';
+
+const useStyles = makeStyles({
+  svg: {
+    width: 'auto',
+    height: 48,
+  },
+});
+
+const LogoIcon = () => {
+  const classes = useStyles();
+
+  return (
+    <svg
+      className={classes.svg}
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 100 100"
+      role="img"
+      aria-label="Goldenpath IDP"
+    >
+      {/* Branching paths that converge */}
+      <path d="M5 80 Q25 80 35 60" stroke="#F5C542" strokeWidth="4" strokeLinecap="round" fill="none" opacity="0.3"/>
+      <path d="M5 20 Q25 20 35 40" stroke="#F5C542" strokeWidth="4" strokeLinecap="round" fill="none" opacity="0.3"/>
+      <path d="M5 50 L35 50" stroke="#F5C542" strokeWidth="4" strokeLinecap="round" fill="none" opacity="0.3"/>
+
+      {/* First merge point */}
+      <circle cx="35" cy="50" r="5" fill="#F5C542" opacity="0.5"/>
+
+      {/* Merged path continuing */}
+      <path d="M35 50 L60 50" stroke="#F5C542" strokeWidth="6" strokeLinecap="round"/>
+
+      {/* Second decision node */}
+      <circle cx="60" cy="50" r="6" fill="#F5C542" opacity="0.7"/>
+
+      {/* Final golden path - rising */}
+      <path d="M60 50 L90 20" stroke="#F5C542" strokeWidth="7" strokeLinecap="round"/>
+
+      {/* Destination node (hollow ring) */}
+      <circle cx="90" cy="20" r="10" fill="none" stroke="#F5C542" strokeWidth="4"/>
+    </svg>
+  );
+};
+
+export default LogoIcon;
