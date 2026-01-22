@@ -1,0 +1,42 @@
+# Backstage Local Development Docker Compose
+# Usage: docker-compose up -d
+# Access: http://localhost:7007
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: backstage-db
+    environment:
+      POSTGRES_USER: backstage
+      POSTGRES_PASSWORD: backstage
+      POSTGRES_DB: backstage
+    volumes:
+      - backstage-db:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backstage"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backstage:
+    image: backstage:local
+    container_name: backstage-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: backstage
+      POSTGRES_PASSWORD: backstage
+      # Optional: Add GitHub token for integrations
+      # GITHUB_TOKEN: ${GITHUB_TOKEN}
+    ports:
+      - "7007:7007"
+    # Override config to use local examples (no external catalog)
+    command: ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]
+
+volumes:
+  backstage-db:
