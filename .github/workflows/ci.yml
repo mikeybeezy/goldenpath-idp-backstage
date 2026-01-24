@@ -1,0 +1,321 @@
+# Owner: platform
+name: CI - Test, Lint, Build
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ============================================================================
+  # Stage 1: Code Quality (fast feedback)
+  # ============================================================================
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Type check
+        run: yarn tsc 2>&1 | tee typescript-output.log
+        continue-on-error: true
+
+      - name: ESLint
+        run: |
+          yarn lint:all --format json --output-file eslint-report.json || true
+          yarn lint:all --format stylish 2>&1 | tee eslint-output.log
+        continue-on-error: true
+
+      - name: Prettier check
+        run: yarn prettier:check 2>&1 | tee prettier-output.log
+        continue-on-error: true
+
+      - name: Generate lint summary
+        if: always()
+        run: |
+          echo "## Code Quality Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### TypeScript" >> $GITHUB_STEP_SUMMARY
+          if grep -q "error TS" typescript-output.log 2>/dev/null; then
+            echo ":x: Type errors found" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            grep "error TS" typescript-output.log | head -20 >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo ":white_check_mark: No type errors" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### ESLint" >> $GITHUB_STEP_SUMMARY
+          if [ -f eslint-report.json ]; then
+            ERRORS=$(cat eslint-report.json | jq '[.[].errorCount] | add // 0')
+            WARNINGS=$(cat eslint-report.json | jq '[.[].warningCount] | add // 0')
+            echo "- Errors: ${ERRORS}" >> $GITHUB_STEP_SUMMARY
+            echo "- Warnings: ${WARNINGS}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Prettier" >> $GITHUB_STEP_SUMMARY
+          if grep -q "Forgot to run Prettier" prettier-output.log 2>/dev/null; then
+            echo ":warning: Formatting issues found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo ":white_check_mark: Code is formatted" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: |
+            typescript-output.log
+            eslint-report.json
+            eslint-output.log
+            prettier-output.log
+          retention-days: 30
+
+  # ============================================================================
+  # Stage 2: Tests
+  # ============================================================================
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run tests with coverage
+        run: |
+          yarn test --coverage --reporters=default --reporters=jest-junit \
+            --coverageReporters=text --coverageReporters=lcov --coverageReporters=json-summary \
+            2>&1 | tee test-output.log
+        env:
+          JEST_JUNIT_OUTPUT_DIR: ./reports
+          JEST_JUNIT_OUTPUT_NAME: junit.xml
+        continue-on-error: true
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "## Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f reports/junit.xml ]; then
+            TESTS=$(grep -o 'tests="[0-9]*"' reports/junit.xml | head -1 | grep -o '[0-9]*' || echo "0")
+            FAILURES=$(grep -o 'failures="[0-9]*"' reports/junit.xml | head -1 | grep -o '[0-9]*' || echo "0")
+            ERRORS=$(grep -o 'errors="[0-9]*"' reports/junit.xml | head -1 | grep -o '[0-9]*' || echo "0")
+
+            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Tests | ${TESTS} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Passed | $((TESTS - FAILURES - ERRORS)) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Failed | ${FAILURES} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Errors | ${ERRORS} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo ":warning: No test report generated" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "### Coverage" >> $GITHUB_STEP_SUMMARY
+            LINES=$(cat coverage/coverage-summary.json | jq '.total.lines.pct')
+            STATEMENTS=$(cat coverage/coverage-summary.json | jq '.total.statements.pct')
+            FUNCTIONS=$(cat coverage/coverage-summary.json | jq '.total.functions.pct')
+            BRANCHES=$(cat coverage/coverage-summary.json | jq '.total.branches.pct')
+
+            echo "| Metric | Coverage |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Lines | ${LINES}% |" >> $GITHUB_STEP_SUMMARY
+            echo "| Statements | ${STATEMENTS}% |" >> $GITHUB_STEP_SUMMARY
+            echo "| Functions | ${FUNCTIONS}% |" >> $GITHUB_STEP_SUMMARY
+            echo "| Branches | ${BRANCHES}% |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            reports/
+            coverage/
+            test-output.log
+          retention-days: 30
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: false
+        continue-on-error: true
+
+  # ============================================================================
+  # Stage 3: Build
+  # ============================================================================
+  build:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build backend
+        run: |
+          START_TIME=$(date +%s)
+          yarn build:backend 2>&1 | tee build-output.log
+          END_TIME=$(date +%s)
+          echo "BUILD_DURATION=$((END_TIME - START_TIME))" >> $GITHUB_ENV
+
+      - name: Generate build summary
+        if: always()
+        run: |
+          echo "## Build Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Duration:** ${BUILD_DURATION:-unknown}s" >> $GITHUB_STEP_SUMMARY
+          echo "- **Node Version:** ${{ env.NODE_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f packages/backend/dist/bundle.tar.gz ]; then
+            BUNDLE_SIZE=$(du -h packages/backend/dist/bundle.tar.gz | cut -f1)
+            SKELETON_SIZE=$(du -h packages/backend/dist/skeleton.tar.gz | cut -f1)
+            echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+            echo "| File | Size |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+            echo "| bundle.tar.gz | ${BUNDLE_SIZE} |" >> $GITHUB_STEP_SUMMARY
+            echo "| skeleton.tar.gz | ${SKELETON_SIZE} |" >> $GITHUB_STEP_SUMMARY
+            echo ":white_check_mark: Build successful" >> $GITHUB_STEP_SUMMARY
+          else
+            echo ":x: Build failed - no artifacts produced" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            packages/backend/dist/
+            build-output.log
+          retention-days: 7
+
+  # ============================================================================
+  # Stage 4: Security Scan
+  # ============================================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Audit dependencies
+        run: |
+          yarn npm audit --all --json > audit-report.json 2>/dev/null || true
+          yarn npm audit --all 2>&1 | tee audit-output.log || true
+        continue-on-error: true
+
+      - name: Generate security summary
+        if: always()
+        run: |
+          echo "## Security Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f audit-report.json ]; then
+            # Count vulnerabilities by severity
+            echo "### Dependency Vulnerabilities" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            head -50 audit-output.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo ":white_check_mark: No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            audit-report.json
+            audit-output.log
+          retention-days: 30
+
+  # ============================================================================
+  # Final Summary
+  # ============================================================================
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [lint, test, build, security]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-reports
+
+      - name: Generate final summary
+        run: |
+          echo "## CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload combined report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-complete-report
+          path: all-reports/
+          retention-days: 90
