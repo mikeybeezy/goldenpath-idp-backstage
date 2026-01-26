@@ -27,6 +27,8 @@ jobs:
 
       - name: Check for corresponding tests
         id: test-check
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           MISSING_TESTS=()
 
@@ -104,8 +106,8 @@ jobs:
             echo 'Add `SKIP-TDD:reason` to PR description to bypass.' >> $GITHUB_STEP_SUMMARY
             echo "Per ADR-0164, bypasses require human approval." >> $GITHUB_STEP_SUMMARY
 
-            # Check for bypass
-            if [[ "${{ github.event.pull_request.body }}" =~ SKIP-TDD: ]]; then
+            # Check for bypass (PR_BODY passed via env block to handle multiline safely)
+            if echo "$PR_BODY" | grep -q "SKIP-TDD:"; then
               echo "::warning::SKIP-TDD bypass requested - requires human approval"
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "> **Bypass Requested:** This PR contains SKIP-TDD directive." >> $GITHUB_STEP_SUMMARY
