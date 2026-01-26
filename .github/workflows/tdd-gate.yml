@@ -1,0 +1,154 @@
+# TDD Gate - Backstage
+# ====================
+# Purpose: Ensure every source file has a corresponding test file.
+# Reference: ADR-0182 TDD Philosophy, ADR-0164 Agent Trust Architecture
+#
+# "No feature without a test. No merge without green."
+
+name: TDD Gate
+
+on:
+  pull_request:
+    paths:
+      - 'packages/**/*.ts'
+      - 'packages/**/*.tsx'
+      - 'plugins/**/*.ts'
+      - 'plugins/**/*.tsx'
+
+jobs:
+  check-tests:
+    name: Check Test Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for corresponding tests
+        id: test-check
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          MISSING_TESTS=()
+
+          # Get changed source files (exclude test files, types, configs)
+          FILES=$(git diff --name-only origin/${{ github.base_ref }} | \
+            grep -E '\.(ts|tsx)$' | \
+            grep -v '\.test\.' | \
+            grep -v '\.spec\.' | \
+            grep -v '__tests__' | \
+            grep -v '__mocks__' | \
+            grep -v '\.d\.ts$' | \
+            grep -v 'setupTests' | \
+            grep -E '^(packages|plugins)/')
+
+          for file in $FILES; do
+            # Skip non-testable files
+            base=$(basename "$file")
+            if [[ "$base" =~ ^(index|types|constants|config|theme|routes|api)\. ]]; then
+              continue
+            fi
+
+            # Skip generated/config files
+            if [[ "$file" =~ (setupTests|jest\.config|app-config) ]]; then
+              continue
+            fi
+
+            dir=$(dirname "$file")
+            base_name=$(basename "$file" | sed 's/\.[^.]*$//')
+
+            # Check for test file patterns
+            found=false
+
+            # Pattern 1: Component.test.ts(x) in same directory
+            if [[ -f "${dir}/${base_name}.test.ts" ]] || \
+               [[ -f "${dir}/${base_name}.test.tsx" ]] || \
+               [[ -f "${dir}/${base_name}.spec.ts" ]] || \
+               [[ -f "${dir}/${base_name}.spec.tsx" ]]; then
+              found=true
+            fi
+
+            # Pattern 2: __tests__/Component.test.ts(x)
+            if [[ -f "${dir}/__tests__/${base_name}.test.ts" ]] || \
+               [[ -f "${dir}/__tests__/${base_name}.test.tsx" ]] || \
+               [[ -f "${dir}/__tests__/${base_name}.spec.ts" ]] || \
+               [[ -f "${dir}/__tests__/${base_name}.spec.tsx" ]]; then
+              found=true
+            fi
+
+            if [[ "$found" == "false" ]]; then
+              MISSING_TESTS+=("$file")
+            fi
+          done
+
+          if [[ ${#MISSING_TESTS[@]} -gt 0 ]]; then
+            echo "missing=true" >> $GITHUB_OUTPUT
+            echo "count=${#MISSING_TESTS[@]}" >> $GITHUB_OUTPUT
+
+            echo "## TDD Gate Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The following source files are missing corresponding test files:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            printf '- `%s`\n' "${MISSING_TESTS[@]}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### How to Fix" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "For each file, create a test file:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "# For packages/app/src/components/Foo.tsx" >> $GITHUB_STEP_SUMMARY
+            echo "# Create: packages/app/src/components/Foo.test.tsx" >> $GITHUB_STEP_SUMMARY
+            echo "#    or: packages/app/src/components/__tests__/Foo.test.tsx" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Bypass (requires approval)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo 'Add `SKIP-TDD:reason` to PR description to bypass.' >> $GITHUB_STEP_SUMMARY
+            echo "Per ADR-0164, bypasses require human approval." >> $GITHUB_STEP_SUMMARY
+
+            # Check for bypass (PR_BODY passed via env block to handle multiline safely)
+            if echo "$PR_BODY" | grep -q "SKIP-TDD:"; then
+              echo "::warning::SKIP-TDD bypass requested - requires human approval"
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "> **Bypass Requested:** This PR contains SKIP-TDD directive." >> $GITHUB_STEP_SUMMARY
+              exit 0
+            fi
+
+            echo ""
+            echo "❌ TDD Gate Failed: ${#MISSING_TESTS[@]} files missing tests"
+            printf '  - %s\n' "${MISSING_TESTS[@]}"
+            echo ""
+            echo "Add SKIP-TDD:reason to PR description to bypass (requires approval)."
+            exit 1
+          else
+            echo "missing=false" >> $GITHUB_OUTPUT
+            echo "## TDD Gate Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All modified source files have corresponding test files." >> $GITHUB_STEP_SUMMARY
+            echo ""
+            echo "✅ All source files have corresponding tests"
+          fi
+
+      - name: Post PR comment on failure
+        if: failure() && steps.test-check.outputs.missing == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const count = '${{ steps.test-check.outputs.count }}';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## TDD Gate Failed
+
+            This PR modifies **${count}** source file(s) without corresponding test files.
+
+            Per [ADR-0182](../docs/adrs/ADR-0182-tdd-philosophy.md):
+            > "No feature without a test. No merge without green."
+
+            ### Options:
+            1. **Add tests** for the modified files
+            2. **Bypass** by adding \`SKIP-TDD:reason\` to PR description (requires CODEOWNER approval)
+
+            See the workflow summary for the list of files needing tests.`
+            });

@@ -1,0 +1,76 @@
+# Owner: platform-team
+# Purpose: Ensure human oversight for critical paths per ADR-0164
+#
+# AGENT TRUST ARCHITECTURE (ADR-0164)
+# ===================================
+# This file defines resources that require HUMAN approval.
+# AI agents cannot approve changes to these paths - they can only propose.
+# This prevents agents from gaming the system by weakening their own constraints.
+
+# Global fallback - all files require platform team review
+*                                       @mikeybeezy
+
+# ============================================================================
+# PROTECTED RESOURCES - Agent Trust Boundaries (ADR-0164)
+# ============================================================================
+# These paths define the "rules of the game" for agents.
+# Changes here require human review to prevent privilege escalation.
+
+# This file itself - agents cannot modify approval authority
+.github/CODEOWNERS                      @mikeybeezy
+
+# CI/CD workflows - agents cannot modify enforcement mechanisms
+.github/workflows/                      @mikeybeezy
+
+# Test configuration - agents cannot weaken coverage thresholds
+jest.config.*                           @mikeybeezy
+**/jest.config.*                        @mikeybeezy
+
+# Package configuration - agents cannot modify test/lint settings
+package.json                            @mikeybeezy
+
+# TypeScript configuration - affects build and type checking
+tsconfig.json                           @mikeybeezy
+**/tsconfig.json                        @mikeybeezy
+
+# ============================================================================
+# TEST FILES - Protected from Weakening
+# ============================================================================
+# Test files require review to prevent assertion weakening.
+# Per ADR-0164: "Agents cannot make tests easier to pass"
+
+packages/**/*.test.ts                   @mikeybeezy
+packages/**/*.test.tsx                  @mikeybeezy
+packages/**/*.spec.ts                   @mikeybeezy
+packages/**/*.spec.tsx                  @mikeybeezy
+plugins/**/*.test.ts                    @mikeybeezy
+plugins/**/*.test.tsx                   @mikeybeezy
+plugins/**/*.spec.ts                    @mikeybeezy
+plugins/**/*.spec.tsx                   @mikeybeezy
+
+# ============================================================================
+# CORE PACKAGES
+# ============================================================================
+
+# Backend - core service
+packages/backend/                       @mikeybeezy
+
+# App - frontend application
+packages/app/                           @mikeybeezy
+
+# ============================================================================
+# PLUGINS
+# ============================================================================
+
+plugins/                                @mikeybeezy
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+# App configuration
+app-config*.yaml                        @mikeybeezy
+
+# Docker configuration
+Dockerfile                              @mikeybeezy
+.dockerignore                           @mikeybeezy
