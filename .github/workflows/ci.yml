@@ -135,13 +135,17 @@ jobs:
 
       - name: Run tests with coverage
         run: |
+          # V1 target: 30% coverage (Backstage has minimal custom code)
+          # Will increase to 50% in V1.1 as more custom components are added
+          # Per TDD adoption plan Phase 2
           yarn test --coverage --reporters=default --reporters=jest-junit \
             --coverageReporters=text --coverageReporters=lcov --coverageReporters=json-summary \
+            --coverageThreshold='{"global":{"branches":30,"functions":30,"lines":30,"statements":30}}' \
             2>&1 | tee test-output.log
         env:
           JEST_JUNIT_OUTPUT_DIR: ./reports
           JEST_JUNIT_OUTPUT_NAME: junit.xml
-        # BLOCKING per ADR-0164: Tests must pass
+        # BLOCKING per ADR-0164: Tests must pass, coverage must meet threshold
 
       - name: Generate test summary
         if: always()
