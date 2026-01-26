@@ -1,0 +1,196 @@
+# Test Integrity Guard - Backstage
+# ================================
+# Purpose: Prevent test weakening to make code pass.
+# Reference: ADR-0164 Agent Trust and Identity Architecture
+#
+# "An agent earns trust not by what it can do, but by what it cannot."
+
+name: Test Integrity Guard
+
+on:
+  pull_request:
+    paths:
+      - 'packages/**/*.test.ts'
+      - 'packages/**/*.test.tsx'
+      - 'packages/**/*.spec.ts'
+      - 'packages/**/*.spec.tsx'
+      - 'plugins/**/*.test.ts'
+      - 'plugins/**/*.test.tsx'
+      - 'plugins/**/*.spec.ts'
+      - 'plugins/**/*.spec.tsx'
+      - '**/jest.config.*'
+      - 'package.json'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test-integrity:
+    name: Test Integrity Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for coverage threshold reduction
+        id: coverage-check
+        run: |
+          # Check if jest config or package.json was modified
+          CONFIG_CHANGES=$(git diff origin/${{ github.base_ref }}...HEAD -- '**/jest.config.*' 'package.json' '**/package.json' || true)
+
+          if echo "$CONFIG_CHANGES" | grep -E '^\+.*coverageThreshold' > /dev/null 2>&1; then
+            echo "::warning::Coverage threshold configuration modified - review required"
+            echo "threshold_modified=true" >> $GITHUB_OUTPUT
+          else
+            echo "threshold_modified=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect test weakening patterns
+        id: weakening-check
+        run: |
+          WARNINGS=""
+          HAS_WARNINGS=false
+
+          # Get diff for test files only
+          DIFF=$(git diff origin/${{ github.base_ref }}...HEAD -- \
+            '**/*.test.ts' '**/*.test.tsx' '**/*.spec.ts' '**/*.spec.tsx' || true)
+
+          # Check for removed expect() calls
+          REMOVED_EXPECTS=$(echo "$DIFF" | grep -c '^-.*expect(' || true)
+          ADDED_EXPECTS=$(echo "$DIFF" | grep -c '^\+.*expect(' || true)
+
+          if [ "$REMOVED_EXPECTS" -gt "$ADDED_EXPECTS" ]; then
+            NET_LOSS=$((REMOVED_EXPECTS - ADDED_EXPECTS))
+            WARNINGS="${WARNINGS}- Net assertion reduction: ${NET_LOSS} expect() calls removed\n"
+            HAS_WARNINGS=true
+          fi
+
+          # Check for new test skips
+          NEW_SKIPS=$(echo "$DIFF" | grep -c '^\+.*\(it\.skip\|describe\.skip\|test\.skip\|xit\|xdescribe\|xtest\)' || true)
+          if [ "$NEW_SKIPS" -gt 0 ]; then
+            WARNINGS="${WARNINGS}- New test skips added: ${NEW_SKIPS} instance(s)\n"
+            HAS_WARNINGS=true
+          fi
+
+          # Check for .only (accidentally left in)
+          NEW_ONLY=$(echo "$DIFF" | grep -c '^\+.*\(it\.only\|describe\.only\|test\.only\|fit\|fdescribe\)' || true)
+          if [ "$NEW_ONLY" -gt 0 ]; then
+            WARNINGS="${WARNINGS}- Test .only() found: ${NEW_ONLY} instance(s) - will skip other tests!\n"
+            HAS_WARNINGS=true
+          fi
+
+          # Check for removed test cases
+          REMOVED_TESTS=$(echo "$DIFF" | grep -c '^-.*\(it(\|test(\|describe(\)' || true)
+          ADDED_TESTS=$(echo "$DIFF" | grep -c '^\+.*\(it(\|test(\|describe(\)' || true)
+
+          if [ "$REMOVED_TESTS" -gt "$ADDED_TESTS" ]; then
+            NET_LOSS=$((REMOVED_TESTS - ADDED_TESTS))
+            WARNINGS="${WARNINGS}- Net test case reduction: ${NET_LOSS} test(s) removed\n"
+            HAS_WARNINGS=true
+          fi
+
+          if [ "$HAS_WARNINGS" = true ]; then
+            echo "has_warnings=true" >> $GITHUB_OUTPUT
+            echo "::warning::Potential test weakening detected:"
+            echo -e "$WARNINGS"
+            echo ""
+            echo "Per ADR-0164, test weakening requires human review and justification."
+
+            # Write to summary
+            echo "## Test Integrity Warning" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Potential test weakening patterns detected:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo -e "$WARNINGS" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Per [ADR-0164](../docs/adrs/ADR-0164-agent-trust-and-identity.md), these changes require human review." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "has_warnings=false" >> $GITHUB_OUTPUT
+            echo "✅ No test weakening patterns detected"
+          fi
+
+      - name: Count test cases
+        id: test-count
+        run: |
+          # Count test cases in current PR
+          PR_TESTS=$(find packages plugins -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.spec.ts' -o -name '*.spec.tsx' 2>/dev/null | \
+            xargs grep -h '^\s*\(it\|test\|describe\)(' 2>/dev/null | wc -l || echo "0")
+          PR_TESTS=$(echo "$PR_TESTS" | tr -d ' ')
+
+          # Checkout base and count
+          git stash 2>/dev/null || true
+          git checkout origin/${{ github.base_ref }} -- packages/ plugins/ 2>/dev/null || true
+
+          BASE_TESTS=$(find packages plugins -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.spec.ts' -o -name '*.spec.tsx' 2>/dev/null | \
+            xargs grep -h '^\s*\(it\|test\|describe\)(' 2>/dev/null | wc -l || echo "0")
+          BASE_TESTS=$(echo "$BASE_TESTS" | tr -d ' ')
+
+          # Restore PR version
+          git checkout HEAD -- packages/ plugins/ 2>/dev/null || true
+          git stash pop 2>/dev/null || true
+
+          echo "base_count=$BASE_TESTS" >> $GITHUB_OUTPUT
+          echo "pr_count=$PR_TESTS" >> $GITHUB_OUTPUT
+
+          echo "Base branch test count: $BASE_TESTS"
+          echo "PR test count: $PR_TESTS"
+
+          if [ "$PR_TESTS" -lt "$BASE_TESTS" ]; then
+            DIFF=$((BASE_TESTS - PR_TESTS))
+            echo "::error::Test count regression: $DIFF fewer test cases than base branch"
+            echo "::error::Per ADR-0164, removing tests requires human approval with justification"
+
+            echo "## Test Count Regression" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Base branch | $BASE_TESTS |" >> $GITHUB_STEP_SUMMARY
+            echo "| This PR | $PR_TESTS |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Difference** | **-$DIFF** |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Per [ADR-0164](../docs/adrs/ADR-0164-agent-trust-and-identity.md), test removal requires human approval." >> $GITHUB_STEP_SUMMARY
+
+            exit 1
+          fi
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## Test Integrity Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage threshold modified | ${{ steps.coverage-check.outputs.threshold_modified }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Weakening patterns detected | ${{ steps.weakening-check.outputs.has_warnings }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Base test count | ${{ steps.test-count.outputs.base_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| PR test count | ${{ steps.test-count.outputs.pr_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Reference: [ADR-0164 Agent Trust and Identity](../docs/adrs/ADR-0164-agent-trust-and-identity.md)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR if issues found
+        if: steps.weakening-check.outputs.has_warnings == 'true' || steps.coverage-check.outputs.threshold_modified == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Test Integrity Review Required
+
+            This PR modifies test files in ways that may weaken test coverage.
+
+            Per [ADR-0164](../docs/adrs/ADR-0164-agent-trust-and-identity.md):
+            > "An agent earns trust not by what it can do, but by what it cannot."
+
+            ### Detected Changes:
+            - Coverage threshold modified: ${{ steps.coverage-check.outputs.threshold_modified }}
+            - Weakening patterns: ${{ steps.weakening-check.outputs.has_warnings }}
+
+            **A CODEOWNER must review and approve these changes.**
+
+            See the workflow summary for details.`
+            });
