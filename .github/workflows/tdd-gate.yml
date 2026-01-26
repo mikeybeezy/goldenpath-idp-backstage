@@ -41,7 +41,7 @@ jobs:
             grep -v '__mocks__' | \
             grep -v '\.d\.ts$' | \
             grep -v 'setupTests' | \
-            grep -E '^(packages|plugins)/')
+            grep -E '^(packages|plugins)/' || true)
 
           for file in $FILES; do
             # Skip non-testable files
@@ -135,20 +135,23 @@ jobs:
         with:
           script: |
             const count = '${{ steps.test-check.outputs.count }}';
+            const body = [
+              '## TDD Gate Failed',
+              '',
+              `This PR modifies **${count}** source file(s) without corresponding test files.`,
+              '',
+              'Per [ADR-0182](https://github.com/mikeybeezy/goldenpath-idp-backstage/blob/main/docs/adrs/ADR-0182-tdd-philosophy.md):',
+              '> "No feature without a test. No merge without green."',
+              '',
+              '### Options:',
+              '1. **Add tests** for the modified files',
+              '2. **Bypass** by adding `SKIP-TDD:reason` to PR description (requires CODEOWNER approval)',
+              '',
+              'See the workflow summary for the list of files needing tests.'
+            ].join('\n');
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## TDD Gate Failed
-
-            This PR modifies **${count}** source file(s) without corresponding test files.
-
-            Per [ADR-0182](../docs/adrs/ADR-0182-tdd-philosophy.md):
-            > "No feature without a test. No merge without green."
-
-            ### Options:
-            1. **Add tests** for the modified files
-            2. **Bypass** by adding \`SKIP-TDD:reason\` to PR description (requires CODEOWNER approval)
-
-            See the workflow summary for the list of files needing tests.`
+              body: body
             });
