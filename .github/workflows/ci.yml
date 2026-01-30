@@ -59,7 +59,7 @@ jobs:
           curl -sLO "https://github.com/equinix-labs/otel-cli/releases/download/v${{ env.OTEL_CLI_VERSION }}/otel-cli_${{ env.OTEL_CLI_VERSION }}_linux_amd64.tar.gz"
           tar xzf "otel-cli_${{ env.OTEL_CLI_VERSION }}_linux_amd64.tar.gz"
           sudo mv otel-cli /usr/local/bin/
-          otel-cli --version
+          echo "otel-cli v${{ env.OTEL_CLI_VERSION }} installed"
 
       - name: Send pipeline start span
         if: vars.OTEL_EXPORTER_OTLP_ENDPOINT != ''
