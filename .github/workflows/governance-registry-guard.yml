@@ -1,0 +1,105 @@
+name: Governance Registry Guard
+
+on:
+  pull_request:
+    branches: [governance-registry]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  validate-agent-permission:
+    name: Validate Agent Permission
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if actor is agent/bot
+        id: actor-check
+        env:
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "Actor: $ACTOR"
+
+          # List of known bot/agent patterns
+          AGENT_PATTERNS=(
+            "bot"
+            "github-actions"
+            "dependabot"
+            "renovate"
+            "claude"
+            "copilot"
+            "agent"
+            "automation"
+            "[bot]"
+          )
+
+          ACTOR_LOWER=$(echo "$ACTOR" | tr '[:upper:]' '[:lower:]')
+          IS_AGENT=false
+
+          for pattern in "${AGENT_PATTERNS[@]}"; do
+            if [[ "$ACTOR_LOWER" == *"$pattern"* ]]; then
+              IS_AGENT=true
+              echo "Actor '$ACTOR' matches agent pattern '$pattern'"
+              break
+            fi
+          done
+
+          echo "is_agent=$IS_AGENT" >> $GITHUB_OUTPUT
+
+          if [[ "$IS_AGENT" == "true" ]]; then
+            echo "🤖 Agent detected: $ACTOR"
+          else
+            echo "👤 Human actor: $ACTOR"
+          fi
+
+      - name: Enforce agent permission for governance-registry
+        if: steps.actor-check.outputs.is_agent == 'true'
+        env:
+          HAS_PERMISSION: ${{ contains(github.event.pull_request.labels.*.name, 'agent-merge-approved') }}
+        run: |
+          echo "Agent merge to governance-registry requires explicit permission"
+          echo ""
+          echo "Label 'agent-merge-approved' present: $HAS_PERMISSION"
+
+          if [[ "$HAS_PERMISSION" == "true" ]]; then
+            echo "✅ Agent merge APPROVED via 'agent-merge-approved' label"
+            echo ""
+            echo "A human has granted permission for this agent to merge."
+            exit 0
+          else
+            echo "❌ ERROR: Agent merge to governance-registry requires explicit permission"
+            echo ""
+            echo "To grant permission, a CODEOWNER must:"
+            echo "  1. Review the PR changes"
+            echo "  2. Add the 'agent-merge-approved' label"
+            echo ""
+            echo "Per ADR-0164: Agents cannot modify governance assets without human approval."
+            exit 1
+          fi
+
+      - name: Human merge (no restriction)
+        if: steps.actor-check.outputs.is_agent == 'false'
+        run: |
+          echo "✅ Human actor - no additional restrictions for governance-registry"
+
+      - name: Generate summary
+        if: always()
+        env:
+          IS_AGENT: ${{ steps.actor-check.outputs.is_agent }}
+          HAS_PERMISSION: ${{ contains(github.event.pull_request.labels.*.name, 'agent-merge-approved') }}
+        run: |
+          echo "## Governance Registry Merge Policy" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Actor | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Is Agent/Bot | $IS_AGENT |" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "$IS_AGENT" == "true" ]]; then
+            echo "| Permission Label | $HAS_PERMISSION |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Policy" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Humans**: Can merge freely" >> $GITHUB_STEP_SUMMARY
+          echo "- **Agents**: Must have \`agent-merge-approved\` label (granted by CODEOWNER)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Per ADR-0164: *Agents require explicit permission for governance assets.*" >> $GITHUB_STEP_SUMMARY
