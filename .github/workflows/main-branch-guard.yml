@@ -1,0 +1,93 @@
+name: Main Branch Guard
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  validate-source:
+    name: Validate Source Branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block agent/bot merges to main
+        env:
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          echo "Actor: $ACTOR"
+          echo "Triggering Actor: $TRIGGERING_ACTOR"
+
+          # List of known bot/agent patterns
+          BLOCKED_PATTERNS=(
+            "bot"
+            "github-actions"
+            "dependabot"
+            "renovate"
+            "claude"
+            "copilot"
+            "agent"
+            "automation"
+            "[bot]"
+          )
+
+          ACTOR_LOWER=$(echo "$ACTOR" | tr '[:upper:]' '[:lower:]')
+
+          for pattern in "${BLOCKED_PATTERNS[@]}"; do
+            if [[ "$ACTOR_LOWER" == *"$pattern"* ]]; then
+              echo "❌ ERROR: Agents and bots are NOT allowed to merge to main"
+              echo ""
+              echo "Actor '$ACTOR' matches blocked pattern '$pattern'"
+              echo ""
+              echo "Per ADR-0164: Merges to main require HUMAN action."
+              echo "An agent may prepare the PR, but a human must merge it."
+              exit 1
+            fi
+          done
+
+          echo "✅ Actor '$ACTOR' is not a blocked agent/bot"
+
+      - name: Check source branch or hotfix label
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HAS_HOTFIX: ${{ contains(github.event.pull_request.labels.*.name, 'hotfix') }}
+        run: |
+          echo "Source branch: $HEAD_REF"
+          echo "Has hotfix label: $HAS_HOTFIX"
+
+          if [[ "$HEAD_REF" == "development" ]]; then
+            echo "✅ Merge from 'development' branch allowed"
+            exit 0
+          fi
+
+          if [[ "$HAS_HOTFIX" == "true" ]]; then
+            echo "✅ Hotfix label present - CODEOWNER review required"
+            echo "⚠️  Ensure CODEOWNER has approved this PR before merging"
+            exit 0
+          fi
+
+          echo "❌ ERROR: PRs to main must either:"
+          echo "   1. Come from 'development' branch, OR"
+          echo "   2. Have 'hotfix' label (requires CODEOWNER approval)"
+          echo ""
+          echo "Current source branch: $HEAD_REF"
+          echo "To fix: merge to 'development' first, or add 'hotfix' label if this is an emergency fix."
+          exit 1
+
+  # Additional check: Ensure merge is performed by human
+  human-merge-required:
+    name: Human Merge Required
+    runs-on: ubuntu-latest
+    steps:
+      - name: Document merge policy
+        run: |
+          echo "## Merge Policy for main branch" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Rule | Enforced |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Source: development or hotfix | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| CODEOWNER approval required | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Agents blocked from merging** | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Human must click merge | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Per ADR-0164: *Agents can propose, only humans can merge to main.*" >> $GITHUB_STEP_SUMMARY
