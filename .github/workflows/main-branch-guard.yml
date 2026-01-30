@@ -1,0 +1,38 @@
+name: Main Branch Guard
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  validate-source:
+    name: Validate Source Branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check source branch or hotfix label
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HAS_HOTFIX: ${{ contains(github.event.pull_request.labels.*.name, 'hotfix') }}
+        run: |
+          echo "Source branch: $HEAD_REF"
+          echo "Has hotfix label: $HAS_HOTFIX"
+
+          if [[ "$HEAD_REF" == "development" ]]; then
+            echo "✅ Merge from 'development' branch allowed"
+            exit 0
+          fi
+
+          if [[ "$HAS_HOTFIX" == "true" ]]; then
+            echo "✅ Hotfix label present - CODEOWNER review required"
+            echo "⚠️  Ensure CODEOWNER has approved this PR before merging"
+            exit 0
+          fi
+
+          echo "❌ ERROR: PRs to main must either:"
+          echo "   1. Come from 'development' branch, OR"
+          echo "   2. Have 'hotfix' label (requires CODEOWNER approval)"
+          echo ""
+          echo "Current source branch: $HEAD_REF"
+          echo "To fix: merge to 'development' first, or add 'hotfix' label if this is an emergency fix."
+          exit 1
