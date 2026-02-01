@@ -46,27 +46,15 @@ catalog:
   rules:
     - allow: [Component, System, API, Resource, Location, Template, Domain, Group, User]
   locations:
-    # Golden Path IDP Infra catalog (external)
+    # Golden Path IDP Infra catalog (centralized catalog)
     - type: url
       target: https://raw.githubusercontent.com/mikeybeezy/goldenpath-idp-infra/development/backstage-helm/backstage-catalog/all.yaml
       rules:
         - allow: [Component, System, API, Resource, Location, Template, Domain, Group, User]
 
-    # Local example data (fallback)
+    # This repo's catalog-info.yaml
     - type: file
-      target: ./examples/entities.yaml
-
-    # Local example template
-    - type: file
-      target: ./examples/template/template.yaml
-      rules:
-        - allow: [Template]
-
-    # Local example organizational data
-    - type: file
-      target: ./examples/org.yaml
-      rules:
-        - allow: [User, Group]
+      target: ../../catalog-info.yaml
 
 # ArgoCD configuration for production
 argocd:
