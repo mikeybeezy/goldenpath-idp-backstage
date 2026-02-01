@@ -22839,6 +22839,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"jest-junit@npm:^16.0.0":
+  version: 16.0.0
+  resolution: "jest-junit@npm:16.0.0"
+  dependencies:
+    mkdirp: "npm:^1.0.4"
+    strip-ansi: "npm:^6.0.1"
+    uuid: "npm:^8.3.2"
+    xml: "npm:^1.0.1"
+  checksum: 10c0/d813d4d142341c2b51b634db7ad6ceb9849514cb58f96ec5e7e4cf4031a557133490452710c2d9dec9b1dd546334d9ca663e042d3070c3e8f102ce6217bd8e2e
+  languageName: node
+  linkType: hard
+
 "jest-leak-detector@npm:30.2.0":
   version: 30.2.0
   resolution: "jest-leak-detector@npm:30.2.0"
@@ -25427,7 +25439,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mkdirp@npm:^1.0.3":
+"mkdirp@npm:^1.0.3, mkdirp@npm:^1.0.4":
   version: 1.0.4
   resolution: "mkdirp@npm:1.0.4"
   bin:
@@ -29708,6 +29720,7 @@ __metadata:
     "@playwright/test": "npm:^1.32.3"
     "@types/jest": "npm:^30.0.0"
     jest: "npm:^30.2.0"
+    jest-junit: "npm:^16.0.0"
     jsdom: "npm:^27.1.0"
     node-gyp: "npm:^10.0.0"
     prettier: "npm:^2.3.2"
@@ -33292,7 +33305,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"xml@npm:=1.0.1":
+"xml@npm:=1.0.1, xml@npm:^1.0.1":
   version: 1.0.1
   resolution: "xml@npm:1.0.1"
   checksum: 10c0/04bcc9b8b5e7b49392072fbd9c6b0f0958bd8e8f8606fee460318e43991349a68cbc5384038d179ff15aef7d222285f69ca0f067f53d071084eb14c7fdb30411
